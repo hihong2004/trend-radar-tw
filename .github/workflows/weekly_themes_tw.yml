@@ -1,0 +1,52 @@
+# .github/workflows/weekly_themes_tw.yml
+# 每週六台灣 12:00 (UTC 04:00) 掃描主題 + 更新 Yahoo 分類
+
+name: Weekly TW Themes
+
+on:
+  schedule:
+    - cron: "0 4 * * 6"  # 每週六 UTC 04:00
+  workflow_dispatch:
+
+jobs:
+  theme-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            themes/theme_cache_tw.json
+            themes/theme_groups.json
+            cache/
+          key: tw-themes-${{ github.run_number }}
+          restore-keys: tw-themes-
+
+      - name: Run weekly scan
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python weekly_themes.py --notify --update-yahoo
+
+      - name: Commit updated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add themes/theme_groups.json themes/theme_cache_tw.json concept_groups.json cache/yahoo_classifications.json || true
+          git diff --staged --quiet || git commit -m "Auto-update themes [skip ci]"
+          git push || true
+
+      - if: failure()
+        run: echo "::error::TW theme scan failed."
